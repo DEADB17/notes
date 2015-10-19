@@ -1,0 +1,210 @@
+:SETTINGS:
+#+OPTIONS: H:4 num:nil toc:nil \n:nil ':t -:nil @:t ::t |:t ^:t f:t *:t <:t
+#+OPTIONS: TeX:t LaTeX:t skip:nil d:nil todo:t pri:nil tags:nil
+#+OPTIONS: author:t email:t creator:t
+#+OPTIONS: html-style:nil html-scripts:nil
+#+HTML_DOCTYPE: html5
+#+HTML_HEAD: <link rel="stylesheet" href="http://www.w3.org/StyleSheets/Core/Steely" type="text/css" />
+#+HTML_HEAD_EXTRA: <style type="text/css"> body{font-size:.9em;} #postamble {margin:2em 0; font-size:.8em; text-align:center; } pre{font: 0.9em/1.8 "Lucida Console", Monaco, monospace; padding:1em;} td,th{padding:.1em .2em;} </style>
+
+#+SELECT_TAGS:  export
+#+EXCLUDE_TAGS: noexport
+
+#+TITLE:
+#+CREATOR: © DEADB17
+
+#+STARTUP: nofold
+
+#+TODO: TODO NEXT | DONE
+#+TODO: MAYBE WAITING BLOCKED POSTPONED | CANCELED DELEGATED
+
+#+PROPERTY: points_ALL 0 1 2 3 5 8 13 20 35 55 90
+
+#+COLUMNS:  %54ITEM %6TODO %3points(pts) %20TIMESTAMP %5CLOCKSUM(clock) %5CLOCKSUM_T(today)
+:END:
+
+* Hierarchical composition by responsibility in JavaScript
+
+- Composition + Single responsibility
+  - Reuse
+  - Independent evolution of elements
+    - Less friction to test and document
+  - Clearer points of extension and modification
+- Systematic approach
+  - Convention for human
+  - Mechanical automation
+
+
+** Tower of abstraction
+- Separate /definition/ and /use/
+  Isolated definitions allow building concrete hierarchies though relational
+  combination like normalization in relational databases
+
+- Separate /data/ and /functions/
+  - Functions or procedures generally encode information that is coupled to the
+    run-time platform where it will be interpreted
+  - Data descriptions are much less tightly coupled and it is much cheaper to
+    map to a different encoding. For example it is relatively easy to have one
+    data definition from which to mechanically derive:
+    - The database schema
+    - The html form for the UI
+    - The JSON format for client/server exchange
+    - Validation rules for different run-times (e.g.: JavaScript and Java)
+
+
+1. Primitives
+2. Combination: ADTs and Objects
+3. Abstracting dispatch: Generic functions
+
+
+** Primitives
+- Data :: Built-in types:
+  ~Undefined~, ~Null~, ~Boolean~, ~String~, ~Number~, and ~Object~
+- Functions :: On built-in types
+  Maximum re-usability
+
+#+NAME: clean-distance-fn
+#+begin_src js
+  function distance(x0, y0, x1, y1) {
+      var x = x0 - x1;
+      var y = y0 - y1;
+      return Math.sqrt(x * x + y * y);
+  }
+#+end_src
+
+versus
+
+#+NAME: coupled-distance-fn
+#+begin_src js
+  function distance(point1, point2) {
+      var x = point1.x - point2.x;
+      var y = point1.y - point2.y;
+      return Math.sqrt(x * x + y * y);
+  }
+
+  // or
+
+  Point.prototype.distance = function(point) {
+      var x = this.x - point.x;
+      var y = this.y - point.y;
+      return Math.sqrt(x * x + y * y);
+  };
+#+end_src
+
+While both define the relationship between elements, the later is *coupled* with
+the responsibility of *destructuring* and is tied to a *specific representation*.
+
+
+** Combination
+- ADTs :: mapping aggregate data to functions on primitives
+
+#+begin_src js
+  'use strict';
+
+  function distance(x0, y0, x1, y1) {
+      var x = x0 - x1;
+      var y = y0 - y1;
+      return Math.sqrt(x * x + y * y);
+  }
+
+  function move(origin, delta) {
+      return origin + delta;
+  }
+
+
+  var Point = function Point(x, y) {
+      return { x: x, y: y };
+  };
+
+  Point.move = function movePoint(point1, point2) {
+      var x = move(point1.x, point2.x);
+      var y = move(point1.y, point2.y);
+      return Point.create(x, y);
+  };
+
+  Point.distance = function distanceToPoint(point1, point2) {
+      return distance(point1.x, point1.y, point2.x, point2.y);
+  };
+#+end_src
+
+
+- Objects :: partially applied ADTs
+
+#+begin_src js
+  'use strict';
+
+  function createPointInstance(x, y) {
+      var pointInstance = new Point(x, y);
+      return {
+          move: function move(point2) {
+              return Point.move(pointInstance, point2);
+          },
+          distance: function distance(point2) {
+              return Point.distance(pointInstance, point2);
+          }
+      };
+  }
+
+  // or
+
+  function createPointInstance(x, y) {
+      var pointInstance = new Point(x, y);
+      return Object.keys(Point).reduce(function r(acc, key) {
+          acc[key] = Point[key].bind(null, pointInstance);
+          return acc;
+      }, {});
+  }
+
+  // or
+
+  function createInstance0(Obj /* consArgs */) {
+      var consArgs = Array.prototype.slice.call(arguments, 1);
+      var instance = Obj.apply(Obj, consArgs);
+      return Object.keys(Obj).reduce(function r(acc, key) {
+          acc[key] = Obj[key].bind(null, instance);
+          return acc;
+      }, {});
+  }
+
+  // or
+
+  function partial(instance, obj) {
+      return Object.keys(obj).reduce(function r(acc, key) {
+          acc[key] = obj[key].bind(null, instance);
+          return acc;
+      }, {});
+  }
+
+  function createPointInstance(x, y) {
+      return partial(new Point(x, y), Point);
+  }
+#+end_src
+
+
+** Abstracting dispatch: Generic functions
+
+#+begin_src js
+  'use strict';
+
+  var functions = {
+      a: function a(obj, arg) { return 'a fn; ' + obj['@type'] + '; ' + arg + ';'; },
+      b: function b(obj, arg) { return 'b fn; ' + obj['@type'] + '; ' + arg + ';'; }
+  };
+
+  function typeSelector(meths, args) { return meths[args[0]['@type']]; }
+
+  var selector = typeSelector.bind(null, functions);
+
+  function ap(sel /* args */) {
+      var args = Array.prototype.slice.call(arguments, 1);
+      var fn = sel(args);
+      return fn.apply(null, args);
+  }
+
+  var ab = ap.bind(null, selector);
+
+  var a = { '@type': 'a' };
+  var b = { '@type': 'b' };
+
+  console.log(ab(a, 'a args'), ab(b, 'b args'));
+#+end_src
