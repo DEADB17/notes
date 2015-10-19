@@ -119,7 +119,7 @@ the responsibility of *destructuring* and is tied to a *specific representation*
   Point.move = function movePoint(point1, point2) {
       var x = move(point1.x, point2.x);
       var y = move(point1.y, point2.y);
-      return Point.create(x, y);
+      return Point(x, y);
   };
 
   Point.distance = function distanceToPoint(point1, point2) {
